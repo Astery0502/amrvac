@@ -60,6 +60,9 @@ contains
     double precision :: defpayload(ndefpayload)
     double precision :: usrpayload(nusrpayload)
     logical          :: follow(num_particles), check
+    double precision :: t(num_particles)
+    
+    t = 0.0d0
 
     follow = .false.
     x      = 0.0d0
@@ -76,7 +79,7 @@ contains
           {^D&x(^D,n) = xprobmin^D + rrd(n+1,^D) * (xprobmax^D - xprobmin^D)\}
         end do
       else
-        call usr_create_particles(num_particles, x, v, q, m, follow)
+        call usr_create_particles(num_particles, x, v, q, m, follow, t)
       end if
     end if
 
@@ -106,7 +109,7 @@ contains
         allocate(particle(n)%self)
         particle(n)%self%follow = follow(n)
         particle(n)%self%index  = n
-        particle(n)%self%time   = global_time
+        particle(n)%self%time   = global_time+t(n)
         particle(n)%self%dt     = 0.0d0
         particle(n)%self%x      = 0.d0
         particle(n)%self%x(:)   = x(:,n)

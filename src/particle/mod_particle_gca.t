@@ -121,6 +121,9 @@ contains
     double precision :: defpayload(ndefpayload)
     double precision :: usrpayload(nusrpayload)
     logical          :: follow(num_particles), check
+    double precision :: tp(num_particles)
+
+    tp = 0.0d0
 
     if (mype==0) then
       if (.not. associated(usr_create_particles)) then
@@ -131,10 +134,10 @@ contains
           end do
         end do
         do n=1, num_particles
-          {^D&x(^D,n) = xprobmin^D + rrd(n+1,^D) * (xprobmax^D - xprobmin^D)\}
+          {^D&x(^D,n) = xprobmin^D + rrd(n,^D) * (xprobmax^D - xprobmin^D)\}
         end do
       else
-        call usr_create_particles(num_particles, x, v, q, m, follow)
+        call usr_create_particles(num_particles, x, v, q, m, follow, tp)
       end if
     end if
 
@@ -143,6 +146,7 @@ contains
     call MPI_BCAST(q,num_particles,MPI_DOUBLE_PRECISION,0,icomm,ierrmpi)
     call MPI_BCAST(m,num_particles,MPI_DOUBLE_PRECISION,0,icomm,ierrmpi)
     call MPI_BCAST(follow,num_particles,MPI_LOGICAL,0,icomm,ierrmpi)
+    !call MPI_BCAST(tp,num_particles,MPI_DOUBLE_PRECISION,0,icomm,ierrmpi)
 
     nparticles_local = 0
 

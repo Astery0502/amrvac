@@ -449,13 +449,14 @@ module mod_usr_methods
     end subroutine update_payload
 
     !> Create particles
-    subroutine create_particles(n_particles, x, v, q, m, follow)
+    subroutine create_particles(n_particles, x, v, q, m, follow, t)
       integer, intent(in)           :: n_particles
       double precision, intent(out) :: x(3, n_particles)
       double precision, intent(out) :: v(3, n_particles)
       double precision, intent(out) :: q(n_particles)
       double precision, intent(out) :: m(n_particles)
       logical, intent(out)          :: follow(n_particles)
+      double precision, intent(out) :: t(n_particles)
     end subroutine create_particles
 
     !> Check arbitrary particle conditions or modifications
