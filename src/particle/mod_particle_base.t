@@ -5,6 +5,9 @@ module mod_particle_base
   use mod_random
   use mod_constants
 
+  !> User creation uses GCA based formation
+  logical                 :: gca_creation
+
   !> String describing the particle physics type
   character(len=name_len) :: physics_type_particles = ""
   !> String describing the particle integrator type
@@ -188,7 +191,8 @@ contains
                               downsample_particles, dtsave_particles, tmax_particles, &
                               num_particles, ndefpayload, nusrpayload, &
                               losses, const_dt_particles, particles_cfl, dtheta, &
-                              relativistic, integrator_type_particles, particles_eta, particles_etah
+                              relativistic, integrator_type_particles, particles_eta, particles_etah, &
+                              gca_creation
 
     do n = 1, size(files)
       open(unitpar, file=trim(files(n)), status="old")
@@ -233,6 +237,7 @@ contains
     nparticles_active_on_mype = 0
     integrator_velocity_factor(:) = 1.0d0
     integrator_type_particles = 'Boris'
+    gca_creation              = .false.
 
     call particles_params_read(par_files)
 

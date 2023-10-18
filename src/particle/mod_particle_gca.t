@@ -170,8 +170,6 @@ contains
 
         nparticles_local = nparticles_local + 1
 
-        call get_lfac_from_velocity(v(:, n), lfac)
-
         allocate(particle(n)%self)
         particle(n)%self%x      = x(:, n)
         particle(n)%self%q      = q(n)
@@ -181,24 +179,27 @@ contains
         particle(n)%self%time   = global_time
         particle(n)%self%dt     = 0.0d0
 
-        call get_vec(bp, igrid, x(:, n), particle(n)%self%time, b)
-
-        bnorm = norm2(b(:))
-        vnorm = norm2(v(:, n))
-        vpar  = sum(v(:, n) * b/bnorm)
-        vperp = sqrt(vnorm**2 - vpar**2)
-
         ! The momentum vector u(1:3) is filled with the following components
+        if (gca_creation) then
+          particle(n)%self%u(:) = v(:,n)
+        else
+          call get_lfac_from_velocity(v(:, n), lfac)
+          call get_vec(bp, igrid, x(:, n), particle(n)%self%time, b)
 
-        ! parallel momentum component (gamma v||)
-        particle(n)%self%u(1) = lfac * vpar
+          bnorm = norm2(b(:))
+          vnorm = norm2(v(:, n))
+          vpar  = sum(v(:, n) * b/bnorm)
+          vperp = sqrt(vnorm**2 - vpar**2)
+          ! parallel momentum component (gamma v||)
+          particle(n)%self%u(1) = lfac * vpar
 
-        ! Mr: the conserved magnetic moment
-        magmom = m(n) * (vperp * lfac)**2 / (2.0d0 * bnorm)
-        particle(n)%self%u(2) = magmom
+          ! Mr: the conserved magnetic moment
+          magmom = m(n) * (vperp * lfac)**2 / (2.0d0 * bnorm)
+          particle(n)%self%u(2) = magmom
 
-        ! Lorentz factor
-        particle(n)%self%u(3) = lfac
+          ! Lorentz factor
+          particle(n)%self%u(3) = lfac
+        end if
 
         ! initialise payloads for GCA module
         allocate(particle(n)%payload(npayload))
@@ -938,7 +939,7 @@ contains
     double precision            :: dt_euler, dt_tmp
     ! make these particle cfl conditions more restrictive if you are interpolating out of the grid
     double precision            :: cfl, uparcfl
-    double precision, parameter :: uparmin=1.0d-6*const_c
+    double precision, parameter :: uparmin=1.0d-7*const_c
     integer                     :: ipart, iipart, nout, ic^D, igrid_particle, ipe_particle, ipe
     logical                     :: BC_applied
 
