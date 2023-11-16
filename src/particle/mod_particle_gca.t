@@ -146,7 +146,7 @@ contains
     call MPI_BCAST(q,num_particles,MPI_DOUBLE_PRECISION,0,icomm,ierrmpi)
     call MPI_BCAST(m,num_particles,MPI_DOUBLE_PRECISION,0,icomm,ierrmpi)
     call MPI_BCAST(follow,num_particles,MPI_LOGICAL,0,icomm,ierrmpi)
-    !call MPI_BCAST(tp,num_particles,MPI_DOUBLE_PRECISION,0,icomm,ierrmpi)
+    call MPI_BCAST(tp,num_particles,MPI_DOUBLE_PRECISION,0,icomm,ierrmpi)
 
     nparticles_local = 0
 
@@ -176,7 +176,7 @@ contains
         particle(n)%self%m      = m(n)
         particle(n)%self%follow = follow(n)
         particle(n)%self%index  = n
-        particle(n)%self%time   = global_time
+        particle(n)%self%time   = global_time + tp(n)
         particle(n)%self%dt     = 0.0d0
 
         ! The momentum vector u(1:3) is filled with the following components
@@ -939,7 +939,7 @@ contains
     double precision            :: dt_euler, dt_tmp
     ! make these particle cfl conditions more restrictive if you are interpolating out of the grid
     double precision            :: cfl, uparcfl
-    double precision, parameter :: uparmin=1.0d-7*const_c
+    double precision, parameter :: uparmin=1.0d-8*const_c
     integer                     :: ipart, iipart, nout, ic^D, igrid_particle, ipe_particle, ipe
     logical                     :: BC_applied
 
@@ -954,7 +954,10 @@ contains
     igrid_working = partp%igrid
     ipart_working = partp%self%index
     dt_tmp = (end_time - partp%self%time)
-    if(dt_tmp .le. 0.0d0) dt_tmp = smalldouble
+    if(dt_tmp .le. 0.0d0) then
+      dt_p = smalldouble
+      return
+    end if
     ! make sure we step only one cell at a time, first check CFL at current location
     ! then we make an Euler step to the new location and check the new CFL
     ! we simply take the minimum of the two timesteps.
@@ -975,14 +978,15 @@ contains
     v(1:ndir) = abs(dydt(1:ndir))
     vp = sqrt(sum(v(:)**2))
 
-    dt_cfl0    = dxmin / max(vp, smalldouble)
-    dt_cfl_ap0 = uparcfl * abs(max(abs(y(ndir+1)),uparmin) / max(abs(ap0), smalldouble))
+    dt_cfl0    = 1/2 * dxmin / max(vp, smalldouble)
+    dt_cfl_ap0 = uparcfl * abs(y(ndir+1)) / max(abs(ap0), smalldouble)
+    ! loose the constraint over the low velocity and low acc, do not let velocity change too much at one step
     !dt_cfl_ap0 = min(dt_cfl_ap0, uparcfl * sqrt(abs(unit_length*dxmin/(ap0+smalldouble))) )
 
     ! make an Euler step with the proposed timestep:
     ! new solution vector:
     dt_euler = min(dt_tmp,dt_cfl0,dt_cfl_ap0)
-    y(1:ndir+2) = y(1:ndir+2) + dt_euler * dydt(1:ndir+2)
+    y(1:ndir+2) = y(1:ndir+2) + dt_cfl0 * dydt(1:ndir+2)
 
     partp%self%x(1:ndir) = y(1:ndir) ! position of guiding center
     partp%self%u(1)      = y(ndir+1) ! parallel momentum component (gamma v||)
@@ -1004,7 +1008,7 @@ contains
     vp = sqrt(sum(v(:)**2))
 
     dt_cfl1    = dxmin / max(vp, smalldouble)
-    dt_cfl_ap1 = uparcfl * abs(max(abs(y(ndir+1)),uparmin) / max(abs(ap1), smalldouble))
+    dt_cfl_ap1 = uparcfl * abs(y(ndir+1)) / max(abs(ap1), smalldouble)
     !dt_cfl_ap1 = min(dt_cfl_ap1, uparcfl * sqrt(abs(unit_length*dxmin/(ap1+smalldouble))) )
 
     dt_tmp = min(dt_euler, dt_cfl1, dt_cfl_ap1)
