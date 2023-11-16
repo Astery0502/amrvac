@@ -40,7 +40,7 @@ module mod_twofl_phys
 
   !> Whether radiative cooling is added
   logical, public, protected              :: twofl_radiative_cooling_c = .false.
-  type(rc_fluid), allocatable :: rc_fl_c
+  type(rc_fluid), public, allocatable :: rc_fl_c
 
   !> Whether viscosity is added
   logical, public, protected              :: twofl_viscosity = .false.
@@ -132,7 +132,6 @@ module mod_twofl_phys
   logical, public                         :: twofl_coll_inc_te = .true.
   !> whether include ionization/recombination inelastic collisional terms
   logical, public                         :: twofl_coll_inc_ionrec = .false.
-  logical, public                         :: twofl_equi_thermal = .true.
   logical, public                         :: twofl_equi_ionrec = .false.
   logical, public                         :: twofl_equi_thermal_n = .false.
   double precision, public                :: dtcollpar = -1d0 !negative value does not impose restriction on the timestep
@@ -233,9 +232,13 @@ module mod_twofl_phys
   public :: twofl_get_v_n_idim
   public :: get_current
   public :: twofl_get_pthermal_c
+  public :: twofl_get_pthermal_n
   public :: twofl_face_to_center
   public :: get_normalized_divb
   public :: b_from_vector_potential
+  public :: usr_mask_gamma_ion_rec
+  public :: usr_mask_alpha
+
   {^NOONED
   public :: twofl_clean_divb_multigrid
   }
@@ -243,17 +246,35 @@ module mod_twofl_phys
   abstract interface
 
     subroutine implicit_mult_factor_subroutine(ixI^L, ixO^L, step_dt, JJ, res)
-    integer, intent(in)                :: ixI^L, ixO^L
-    double precision, intent(in) :: step_dt
-    double precision, intent(in) :: JJ(ixI^S)
-    double precision, intent(out) :: res(ixI^S)
+      integer, intent(in)                :: ixI^L, ixO^L
+      double precision, intent(in) :: step_dt
+      double precision, intent(in) :: JJ(ixI^S)
+      double precision, intent(out) :: res(ixI^S)
 
-  end subroutine implicit_mult_factor_subroutine
+    end subroutine implicit_mult_factor_subroutine
+
+    subroutine mask_subroutine(ixI^L,ixO^L,w,x,res)
+      use mod_global_parameters
+      integer, intent(in) :: ixI^L, ixO^L
+      double precision, intent(in) :: x(ixI^S,1:ndim)
+      double precision, intent(in) :: w(ixI^S,1:nw)
+      double precision, intent(inout) :: res(ixI^S)
+    end subroutine mask_subroutine
+
+    subroutine mask_subroutine2(ixI^L,ixO^L,w,x,res1, res2)
+      use mod_global_parameters
+      integer, intent(in) :: ixI^L, ixO^L
+      double precision, intent(in) :: x(ixI^S,1:ndim)
+      double precision, intent(in) :: w(ixI^S,1:nw)
+      double precision, intent(inout) :: res1(ixI^S),res2(ixI^S)
+    end subroutine mask_subroutine2
 
   end interface
 
    procedure (implicit_mult_factor_subroutine), pointer :: calc_mult_factor => null()
    integer, protected ::  twofl_implicit_calc_mult_method = 1
+  procedure(mask_subroutine), pointer  :: usr_mask_alpha => null()
+  procedure(mask_subroutine2), pointer  :: usr_mask_gamma_ion_rec => null()
 
 contains
 
@@ -272,7 +293,7 @@ contains
       twofl_dump_full_vars, has_equi_rho_c0, has_equi_pe_c0, twofl_hyperdiffusivity,twofl_dump_hyperdiffusivity_coef,&
       has_equi_pe_n0, has_equi_rho_n0, twofl_thermal_conduction_n, twofl_radiative_cooling_n,  &
       twofl_alpha_coll,twofl_alpha_coll_constant,&
-      twofl_coll_inc_te, twofl_coll_inc_ionrec,twofl_equi_ionrec,twofl_equi_thermal,&
+      twofl_coll_inc_te, twofl_coll_inc_ionrec,twofl_equi_ionrec,&
       twofl_equi_thermal_n,dtcollpar,&
       twofl_dump_coll_terms,twofl_implicit_calc_mult_method,&
       boundary_divbfix, boundary_divbfix_skip, twofl_divb_4thorder, &
@@ -3204,14 +3225,14 @@ contains
   end subroutine twofl_get_flux
 
   !> w[iws]=w[iws]+qdt*S[iws,wCT] where S is the source based on wCT within ixO
-  subroutine twofl_add_source(qdt,ixI^L,ixO^L,wCT,wCTprim,w,x,qsourcesplit,active)
+  subroutine twofl_add_source(qdt,dtfactor,ixI^L,ixO^L,wCT,wCTprim,w,x,qsourcesplit,active)
     use mod_global_parameters
     use mod_radiative_cooling, only: radiative_cooling_add_source
     use mod_viscosity, only: viscosity_add_source
     !use mod_gravity, only: gravity_add_source
 
     integer, intent(in)             :: ixI^L, ixO^L
-    double precision, intent(in)    :: qdt
+    double precision, intent(in)    :: qdt,dtfactor
     double precision, intent(in)    :: wCT(ixI^S,1:nw),wCTprim(ixI^S,1:nw),x(ixI^S,1:ndim)
     double precision, intent(inout) :: w(ixI^S,1:nw)
     logical, intent(in)             :: qsourcesplit
@@ -4586,12 +4607,12 @@ contains
   end subroutine coll_get_dt
 
   ! Add geometrical source terms to w
-  subroutine twofl_add_source_geom(qdt,ixI^L,ixO^L,wCT,w,x)
+  subroutine twofl_add_source_geom(qdt,dtfactor,ixI^L,ixO^L,wCT,w,x)
     use mod_global_parameters
     use mod_geometry
 
     integer, intent(in)             :: ixI^L, ixO^L
-    double precision, intent(in)    :: qdt, x(ixI^S,1:ndim)
+    double precision, intent(in)    :: qdt, dtfactor,x(ixI^S,1:ndim)
     double precision, intent(inout) :: wCT(ixI^S,1:nw), w(ixI^S,1:nw)
 
     integer          :: iw,idir, h1x^L{^NOONED, h2x^L}
@@ -6641,8 +6662,8 @@ contains
     !number electrons rho_c = n_e * MH, in normalized units MH=1 and n = rho
     rho(ixO^S) = rho(ixO^S) * unit_numberdensity  
     if(.not. SI_unit) then
-      !1/cm^3 = 1e9/m^3
-      rho(ixO^S) = rho(ixO^S) * 1d9  
+      !1/cm^3 = 1e6/m^3
+      rho(ixO^S) = rho(ixO^S) * 1d6
     endif
     gamma_rec(ixO^S) = rho(ixO^S) /sqrt(tmp(ixO^S)) * 2.6e-19
     gamma_ion(ixO^S) = ((rho(ixO^S) * A) /(XX + Eion/tmp(ixO^S))) * ((Eion/tmp(ixO^S))**K) * exp(-Eion/tmp(ixO^S))
@@ -6651,6 +6672,9 @@ contains
     gamma_rec(ixO^S) = gamma_rec(ixO^S) * unit_time  
     gamma_ion(ixO^S) = gamma_ion(ixO^S) * unit_time  
 
+    if (associated(usr_mask_gamma_ion_rec)) then
+      call usr_mask_gamma_ion_rec(ixI^L,ixO^L,w,x,gamma_ion, gamma_rec)
+    end if
   end subroutine get_gamma_ion_rec
 
   subroutine get_alpha_coll(ixI^L, ixO^L, w, x, alpha)
@@ -6664,6 +6688,9 @@ contains
     else
       call get_alpha_coll_plasma(ixI^L, ixO^L, w, x, alpha)
     endif
+    if (associated(usr_mask_alpha)) then
+      call usr_mask_alpha(ixI^L,ixO^L,w,x,alpha)
+    end if
   end subroutine get_alpha_coll
 
   subroutine get_alpha_coll_plasma(ixI^L, ixO^L, w, x, alpha)
@@ -6819,13 +6846,11 @@ contains
 
     !update internal energy
     if(twofl_coll_inc_te) then
-     if(.not. twofl_equi_thermal) then   
-        if(has_equi_pe_n0) then
-          tmp4(ixO^S) = tmp4(ixO^S) + block%equi_vars(ixO^S,equi_pe_n0_,0)*inv_gamma_1  
-        endif
-        if(has_equi_pe_c0) then
-          tmp5(ixO^S) = tmp5(ixO^S) + block%equi_vars(ixO^S,equi_pe_c0_,0)*inv_gamma_1 
-        endif
+      if(has_equi_pe_n0) then
+        tmp4(ixO^S) = tmp4(ixO^S) + block%equi_vars(ixO^S,equi_pe_n0_,0)*inv_gamma_1  
+      endif
+      if(has_equi_pe_c0) then
+        tmp5(ixO^S) = tmp5(ixO^S) + block%equi_vars(ixO^S,equi_pe_c0_,0)*inv_gamma_1 
       endif
 
       tmp(ixO^S) = alpha(ixO^S) *(-rhoc(ixO^S)/Rn * tmp4(ixO^S) + rhon(ixO^S)/Rc * tmp5(ixO^S))
@@ -6988,13 +7013,11 @@ contains
 
     !update internal energy
     if(twofl_coll_inc_te) then
-     if(.not. twofl_equi_thermal) then   
-        if(has_equi_pe_n0) then
-          tmp4(ixO^S) = tmp4(ixO^S) + block%equi_vars(ixO^S,equi_pe_n0_,0)*inv_gamma_1  
-        endif
-        if(has_equi_pe_c0) then
-          tmp5(ixO^S) = tmp5(ixO^S) + block%equi_vars(ixO^S,equi_pe_c0_,0)*inv_gamma_1 
-        endif
+      if(has_equi_pe_n0) then
+        tmp4(ixO^S) = tmp4(ixO^S) + block%equi_vars(ixO^S,equi_pe_n0_,0)*inv_gamma_1  
+      endif
+      if(has_equi_pe_c0) then
+        tmp5(ixO^S) = tmp5(ixO^S) + block%equi_vars(ixO^S,equi_pe_c0_,0)*inv_gamma_1 
       endif
 
       tmp(ixO^S) = alpha(ixO^S) *(-rhoc(ixO^S)/Rn * tmp4(ixO^S) + rhon(ixO^S)/Rc * tmp5(ixO^S))
@@ -7104,13 +7127,11 @@ contains
 
     !update internal energy
     if(twofl_coll_inc_te) then
-     if(.not. twofl_equi_thermal) then   
-        if(has_equi_pe_n0) then
-          tmp4(ixO^S) = tmp4(ixO^S) + block%equi_vars(ixO^S,equi_pe_n0_,0)*inv_gamma_1  
-        endif
-        if(has_equi_pe_c0) then
-          tmp5(ixO^S) = tmp5(ixO^S) + block%equi_vars(ixO^S,equi_pe_c0_,0)*inv_gamma_1 
-        endif
+      if(has_equi_pe_n0) then
+        tmp4(ixO^S) = tmp4(ixO^S) + block%equi_vars(ixO^S,equi_pe_n0_,0)*inv_gamma_1  
+      endif
+      if(has_equi_pe_c0) then
+        tmp5(ixO^S) = tmp5(ixO^S) + block%equi_vars(ixO^S,equi_pe_c0_,0)*inv_gamma_1 
       endif
 
       tmp(ixO^S) = alpha(ixO^S) *(-rhoc(ixO^S)/Rn * tmp4(ixO^S) + rhon(ixO^S)/Rc * tmp5(ixO^S))

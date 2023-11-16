@@ -260,7 +260,7 @@ contains
          wall_time_max,final_dt_reduction
 
     namelist /methodlist/ time_stepper,time_integrator, &
-         source_split_usr,typesourcesplit,&
+         source_split_usr,typesourcesplit,local_timestep,&
          dimsplit,typedimsplit,flux_scheme,&
          limiter,gradient_limiter,cada3_radius,&
          loglimit,typeboundspeed, H_correction,&
@@ -406,7 +406,11 @@ contains
     time_init     = 0.d0
     time_max      = bigdouble
     wall_time_max = bigdouble
-    final_dt_reduction=.true.
+    if(local_timestep) then
+      final_dt_reduction=.false.
+    else
+      final_dt_reduction=.true.
+    endif
     final_dt_exit=.false.
     dtmin         = 1.0d-10
     nslices       = 0
@@ -634,18 +638,15 @@ contains
     ! Root process will search snapshot
     if (mype == 0) then
       if(restart_from_file == undefined) then
-        do index_latest_data = -1, 9998
-           ! Check if the next snapshot is missing
-           if (.not. snapshot_exists(index_latest_data+1)) exit
+        ! search file from highest index
+        file_exists=.false.
+        do index_latest_data = 9999, 0, -1
+          if(snapshot_exists(index_latest_data)) then
+            file_exists=.true.
+            exit
+          end if
         end do
-
-        if (index_latest_data == -1) then
-           ! If initial data is missing (e.g. moved due to lack of space),
-           ! search file with highest index
-           do index_latest_data = 9999, 0, -1
-              if (snapshot_exists(index_latest_data)) exit
-           end do
-        end if
+        if(.not.file_exists) index_latest_data=-1
       else
         ! get index of the given data restarted from
         index_latest_data=get_snapshot_index(trim(restart_from_file))
