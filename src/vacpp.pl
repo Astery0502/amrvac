@@ -382,6 +382,7 @@ sub printline{
        $line = &unquote(&format90($line));
        print $line, "$comment\n";
     }
+    print $_;
 }
 #===========================================================================
 # Break long lines into continuation lines and/or reduce indentation

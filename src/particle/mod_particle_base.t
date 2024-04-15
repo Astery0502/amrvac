@@ -7,6 +7,11 @@ module mod_particle_base
 
   !> User creation uses GCA based formation
   logical                 :: gca_creation
+  !> Critical Value as threshold for switch between GCA and Full Lorentz
+  double precision        :: Kcr
+  double precision        :: Bcr
+  !> Number of repeated particles at the neighborhood of created particles
+  integer                 :: num_nearpos
 
   !> String describing the particle physics type
   character(len=name_len) :: physics_type_particles = ""
@@ -111,7 +116,7 @@ module mod_particle_base
     integer          :: index
     !> charge
     double precision :: q
-    !> mass
+    !> mass; use the symbol of m to indicate switch type
     double precision :: m
     !> time
     double precision :: time
@@ -135,6 +140,7 @@ module mod_particle_base
   procedure(sub_fill_additional_gridvars), pointer   :: particles_fill_additional_gridvars => null()
   procedure(sub_integrate), pointer                  :: particles_integrate => null()
   procedure(fun_destroy), pointer                    :: usr_destroy_particle => null()
+  procedure(sub_define_e), pointer                   :: usr_define_e => null()
 
   abstract interface
 
@@ -157,6 +163,13 @@ module mod_particle_base
       logical                         :: fun_destroy
       type(particle_ptr), intent(in)    :: myparticle
     end function fun_destroy
+
+    subroutine sub_define_e(igrid, x, particle_time, e)
+      integer, intent(in)            :: igrid
+      double precision, intent(in)   :: x(1:3)
+      double precision, intent(in)   :: particle_time
+      double precision, intent(out)  :: e(1:3)
+    end subroutine sub_define_e
 
   end interface
 
@@ -192,7 +205,7 @@ contains
                               num_particles, ndefpayload, nusrpayload, &
                               losses, const_dt_particles, particles_cfl, dtheta, &
                               relativistic, integrator_type_particles, particles_eta, particles_etah, &
-                              gca_creation
+                              gca_creation, Kcr, Bcr, num_nearpos
 
     do n = 1, size(files)
       open(unitpar, file=trim(files(n)), status="old")
@@ -211,8 +224,8 @@ contains
     character(len=20)  :: strdata
 
     physics_type_particles    = 'advect'
-    nparticleshi              = 10000000
-    nparticles_per_cpu_hi     = 1000000
+    nparticleshi              = 1000000
+    nparticles_per_cpu_hi     = 100000
     num_particles             = 1000
     ndefpayload               = 1
     nusrpayload               = 0
@@ -238,6 +251,9 @@ contains
     integrator_velocity_factor(:) = 1.0d0
     integrator_type_particles = 'Boris'
     gca_creation              = .false.
+    Kcr                       = bigdouble
+    Bcr                       = smalldouble
+    num_nearpos               = 1
 
     call particles_params_read(par_files)
 
@@ -655,6 +671,28 @@ contains
     end if
 
   end subroutine get_vec
+
+  !> Get scalar-like from gridvars
+  subroutine get_scalar(ix1, igrid, x, tloc, scalar)
+    use mod_global_parameters
+    integer, intent(in) :: ix1, igrid
+    double precision, intent(in) :: x(ndir) 
+    double precision, intent(in) :: tloc
+    double precision, intent(out) :: scalar
+    double precision :: scalar1, scalar2, td
+
+    if (.not. time_advance) then
+      call interpolate_var(igrid,ixG^LL,ixM^LL,gridvars(igrid)%w(ixG^T,ix1), &
+        ps(igrid)%x(ixG^T,1:ndim),x,scalar)
+    else
+      call interpolate_var(igrid,ixG^LL,ixM^LL,gridvars(igrid)%wold(ixG^T,ix1), &
+        ps(igrid)%x(ixG^T,1:ndim),x,scalar1)
+      call interpolate_var(igrid,ixG^LL,ixM^LL,gridvars(igrid)%w(ixG^T,ix1), &
+        ps(igrid)%x(ixG^T,1:ndim),x,scalar2)
+      td = (tloc - global_time) / dt 
+      scalar = scalar1 * (1.0d0 - td) + scalar2 * td
+    end if
+  end subroutine get_scalar
 
   !> Get Lorentz factor from relativistic momentum
   pure subroutine get_lfac(u,lfac)
@@ -1157,7 +1195,7 @@ contains
     double precision, dimension(ndim), intent(in)  :: x
 
     particle_in_domain = all(x >= [ xprobmin^D ]) .and. &
-         all(x < [ xprobmax^D ]) ! Jannis: as before < instead of <= here, necessary?
+         all(x <= [ xprobmax^D ]) ! Jannis: as before < instead of <= here, necessary?
   end function particle_in_domain
 
   !> Quick check if particle is still in igrid

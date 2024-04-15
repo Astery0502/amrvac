@@ -11,7 +11,7 @@ mod_ghostcells_update.t mod_small_values.t mod_ppm.t mod_mp5.t mod_weno.t       
 mod_venk.t mod_limiter.t mod_fix_conserve.t mod_source.t mod_initialize.t       \
 mod_amrvac.t mod_bc_data.t mod_lookup_table.t mod_amr_fct.t                     \
 mod_constrained_transport.t mod_multigrid_coupling.t mod_space_filling_curve.t \
-mod_supertimestepping.t mod_init_datafromfile.t
+mod_supertimestepping.t mod_init_datafromfile.t mod_usr_funcs.t
 
 ############################################################################
 #  Dependencies of INCLUDES
@@ -253,11 +253,15 @@ mod_particle_lorentz.o: mod_geometry.mod
 mod_particle_lorentz.o: mod_particle_base.mod
 mod_particle_sample.o: mod_geometry.mod
 mod_particle_sample.o: mod_particle_base.mod
+mod_particle_switch.o: mod_geometry.mod
+mod_particle_switch.o: mod_odeint.mod
+mod_particle_switch.o: mod_particle_base.mod
 mod_particles.o: mod_particle_advect.mod
 mod_particles.o: mod_particle_base.mod
 mod_particles.o: mod_particle_gca.mod
 mod_particles.o: mod_particle_lorentz.mod
 mod_particles.o: mod_particle_sample.mod
+mod_particles.o: mod_particle_switch.mod
 mod_particles.o: mod_timing.mod
 mod_physics.o: mod_physics_hllc.mod
 mod_physics.o: mod_physics_roe.mod
@@ -363,6 +367,10 @@ mod_twofl_phys.o: mod_viscosity.mod
 mod_twofl_roe.o: mod_physics_roe.mod
 mod_twofl_roe.o: mod_tvd.mod
 mod_twofl_roe.o: mod_twofl_phys.mod
+mod_usr_funcs.o: mod_geometry.mod
+mod_usr_funcs.o: mod_mhd.mod
+mod_usr_funcs.o: mod_particles.mod
+mod_usr_funcs.o: mod_random.mod
 mod_variables.o: mod_basic_types.mod
 mod_viscosity.o: mod_geometry.mod
 mod_weno.o: mod_physics.mod

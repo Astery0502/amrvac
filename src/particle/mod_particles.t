@@ -5,6 +5,7 @@ module mod_particles
   use mod_particle_lorentz
   use mod_particle_gca
   use mod_particle_sample
+  use mod_particle_switch
 
   implicit none
 
@@ -26,6 +27,8 @@ contains
       call gca_init()
     case('sample')
       call sample_init()
+    case('switch')
+      call switch_init()
     case default
       if (mype == 0) then
         print *, "Unknown physics_type_particles", &
@@ -57,6 +60,8 @@ contains
       call gca_create_particles()
     case('sample')
       call sample_create_particles()
+    case('switch')
+      call switch_create_particles()
     case default
       if (mype == 0) then
         print *, "Unknown physics_type_particles", &
